@@ -1,45 +1,51 @@
-
-from flask import Flask, request, send_file, render_template_string
-import pandas as pd
-import io
-import zipfile
+from flask import Flask, request, render_template_string
+import os
 
 app = Flask(__name__)
 
+def extract_b40_values(file_content):
+    lines = file_content.splitlines()
+    return [line for line in lines if 'B40' in line]
+
 HTML_TEMPLATE = """
 <!doctype html>
-<title>B40 XLS Extractor</title>
-<h2>Upload XLS-Dateien</h2>
+<title>B40 Extractor</title>
+<h2>Datei hochladen</h2>
 <form method=post enctype=multipart/form-data>
-  <input type=file name=files multiple>
+  <input type=file name=file>
   <input type=submit value=Upload>
 </form>
-{% if download_link %}
-  <p><a href="{{ download_link }}">Download Ergebnis</a></p>
+{% if error %}
+  <p style="color:red;"><strong>Fehler: {{ error }}</strong></p>
+{% endif %}
+{% if results %}
+  <h3>Gefundene B40-Zeilen:</h3>
+  <ul>
+  {% for line in results %}
+    <li>{{ line }}</li>
+  {% endfor %}
+  </ul>
 {% endif %}
 """
 
 @app.route("/", methods=["GET", "POST"])
-def upload_files():
+def upload_file():
+    results = []
+    error = None
     if request.method == "POST":
-        files = request.files.getlist("files")
-        output = io.BytesIO()
-        with zipfile.ZipFile(output, "w") as zipf:
-            for file in files:
-                df = pd.read_excel(file, engine="openpyxl")
-                b40_rows = df[df.apply(lambda row: row.astype(str).str.contains("B40").any(), axis=1)]
-                result_io = io.BytesIO()
-                b40_rows.to_excel(result_io, index=False)
-                result_io.seek(0)
-                zipf.writestr(f"B40_{file.filename}", result_io.read())
-        output.seek(0)
-        return send_file(output, mimetype="application/zip", as_attachment=True, download_name="b40_results.zip")
-    return render_template_string(HTML_TEMPLATE)
-
-
-import os
+        try:
+            uploaded_file = request.files.get("file")
+            if not uploaded_file:
+                error = "Keine Datei hochgeladen."
+            else:
+                content = uploaded_file.read().decode("utf-8")
+                results = extract_b40_values(content)
+        except Exception as e:
+            error = str(e)
+    return render_template_string(HTML_TEMPLATE, results=results, error=error)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
