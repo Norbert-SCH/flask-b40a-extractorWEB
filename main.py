@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file
+from flask import Flask, request, send_file, render_template_string
 import pandas as pd
 import os
 
@@ -22,8 +22,15 @@ def upload_file():
             result_df = pd.DataFrame({'B40': [b40_value]})
             result_df.to_excel(result_path, index=False)
 
-            # Datei zum Download zurückgeben
-            return send_file(result_path, as_attachment=True)
+            # HTML-Bestätigungsseite mit Download-Link
+            confirmation_html = f'''
+            <h2>Datei erfolgreich verarbeitet!</h2>
+            <p>Der extrahierte Wert aus Zelle B40 lautet: <strong>{b40_value}</strong></p>
+            <a href="/download" target="_blank">
+                <button>Ergebnisdatei herunterladen</button>
+            </a>
+            '''
+            return render_template_string(confirmation_html)
 
     return '''
     <form method="post" enctype="multipart/form-data">
@@ -31,6 +38,11 @@ def upload_file():
         <input type="submit" value="Upload">
     </form>
     '''
+
+@app.route('/download')
+def download_file():
+    result_path = os.path.join('/tmp', 'result.xlsx')
+    return send_file(result_path, as_attachment=True)
 
 if __name__ == '__main__':
     app.run(debug=True)
