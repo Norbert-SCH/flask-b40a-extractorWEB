@@ -1,53 +1,40 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, send_file
+import pandas as pd
 import os
 
 app = Flask(__name__)
 
-def extract_b40_values(file_content):
-    lines = file_content.splitlines()
-    return [line for line in lines if 'B40' in line]
+UPLOAD_FOLDER = 'uploads'
+RESULT_FOLDER = 'results'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(RESULT_FOLDER, exist_ok=True)
 
-HTML_TEMPLATE = """
-<!doctype html>
-<title>B40 Extractor</title>
-<h2>Datei hochladen</h2>
-<form method=post enctype=multipart/form-data>
-  <input type=file name=file>
-  <input type=submit value=Upload>
-</form>
-{% if error %}
-  <p style='color:red;'><strong>Fehler: {{ error }}</strong></p>
-{% endif %}
-{% if results %}
-  <h3>Gefundene B40-Zeilen:</h3>
-  <ul>
-  {% for line in results %}
-    <li>{{ line }}</li>
-  {% endfor %}
-  </ul>
-{% endif %}
-"""
-
-@app.route("/", methods=["GET", "POST"])
+@app.route('/', methods=['GET', 'POST'])
 def upload_file():
-    results = []
-    error = None
-    if request.method == "POST":
-        try:
-            uploaded_file = request.files.get("file")
-            if not uploaded_file:
-                error = "Keine Datei hochgeladen."
-            else:
-                try:
-                    content = uploaded_file.read().decode("utf-8")
-                except UnicodeDecodeError:
-                    uploaded_file.seek(0)
-                    content = uploaded_file.read().decode("latin1")
-                results = extract_b40_values(content)
-        except Exception as e:
-            error = str(e)
-    return render_template_string(HTML_TEMPLATE, results=results, error=error)
+    if request.method == 'POST':
+        file = request.files['file']
+        if file.filename.endswith('.xls'):
+            filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+            file.save(filepath)
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+            # Verarbeitung: Extrahiere Zelle B40
+            df = pd.read_excel(filepath, header=None, engine='xlrd')
+            b40_value = df.iloc[39, 1]  # B40 = Zeile 40, Spalte 2 (Index 39, 1)
+
+            # Ergebnisdatei erstellen
+            result_path = os.path.join(RESULT_FOLDER, 'result.xlsx')
+            result_df = pd.DataFrame({'B40': [b40_value]})
+            result_df.to_excel(result_path, index=False)
+
+            # Datei zum Download zurückgeben
+            return send_file(result_path, as_attachment=True)
+
+    return '''
+    <form method="post" enctype="multipart/form-data">
+        <input type="file" name="file">
+        <input type="submit" value="Upload">
+    </form>
+    '''
+
+if __name__ == '__main__':
+    app.run(debug=True)
